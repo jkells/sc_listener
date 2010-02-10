@@ -128,13 +128,19 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 // A propper fourier transform should give a much better result than this.
 - (void)updateFreqFromBuffer: (AudioQueueBufferRef) inBuffer{
 	UInt32 totalBytes = inBuffer->mAudioDataByteSize;
-	short lastSample = -1;
+	UInt32 span = format.mBytesPerPacket;
+  short lastSample = -1;
 	Float32 zeroCrossings = 0;
 	
-	for(int i=0; i < totalBytes; i+= format.mBytesPerPacket){
-		short* p_sample = (short*)(inBuffer->mAudioData + i);
-		short sample = * p_sample;
-	
+  // 5 Byte rolling average
+	for(int i = 0; i < totalBytes - (5 * span); i += span){
+		int sampleSum = 0;
+    for(int y = 0; y < 5 * span; y+=span){ 
+      short* p_sample = (short*)(inBuffer->mAudioData + i + y);
+		  sampleSum += *p_sample;
+	  }
+    short sample = sampleSum / 5;
+
 		// Test for the wave crossing the origin.
 		if((sample >= 0 && lastSample < 0) || (sample < 0 && lastSample >= 0))
 		{
