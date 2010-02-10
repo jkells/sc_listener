@@ -1,5 +1,9 @@
-SCListener 1.0.1
-================
+SCListener 1.0.1-jkells
+=======================
+
+* This is a fork to add frequency detection.
+
+* DON'T USE THIS YET. Trying to calculate the frequency based on zero crossings is no good. 
 
 A simple class for listening to microphone levels, suitable for the iPhone.
 

@@ -16,6 +16,7 @@
 	AudioQueueRef queue;
 	AudioStreamBasicDescription format;
 	Float64 sampleRate;
+	Float32 frequency;
 }
 
 + (SCListener *)sharedListener;
@@ -25,6 +26,7 @@
 - (void)pause;
 - (void)stop;
 
+- (Float32)frequency;
 - (Float32)averagePower;
 - (Float32)peakPower;
 - (AudioQueueLevelMeterState *)levels;

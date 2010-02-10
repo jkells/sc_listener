@@ -1,6 +1,13 @@
 SCListener
 ==========
 
+Version 1.0.1-jkells
+--------------------
+
+10 Feb 2010
+
+* Attempt to detect the frequency using zero crossings of the wave.
+
 Version 1.0.1
 -------------
 
