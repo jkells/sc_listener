@@ -46,9 +46,10 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 #pragma mark Listening
 
 - (void)listen {
-	if (queue == nil)
+	if (queue == nil){
 		[self setupQueue];
-
+   	AudioSessionInitialize(NULL,NULL,NULL,NULL);
+  }
 	AudioQueueStart(queue, NULL);
 }
 
@@ -114,8 +115,8 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 		return;
 
 	[self setupFormat];
-	[self setupBuffers];
 	AudioQueueNewInput(&format, listeningCallback, self, NULL, NULL, 0, &queue);
+	[self setupBuffers];
 	[self setupMetering];	
 }
 
