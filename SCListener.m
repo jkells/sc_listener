@@ -19,6 +19,9 @@
 
 @end
 
+static const int kBUFFERSIZE = 16384;	//How big a buffer to use.
+static const int kMEANWINDOW = 15;		//Hom many samples to average together when smoothing the input.
+
 static SCListener *sharedListener = nil;
 
 static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer, const AudioTimeStamp *inStartTime, UInt32 inNumberPacketsDescriptions, const AudioStreamPacketDescription *inPacketDescs) {
@@ -127,20 +130,22 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 // Calculate the frequency based on zero crossings.
 // A propper fourier transform should give a much better result than this.
 - (void)updateFreqFromBuffer: (AudioQueueBufferRef) inBuffer{
-	UInt32 totalBytes = inBuffer->mAudioDataByteSize;
-	UInt32 span = format.mBytesPerPacket;
-  short lastSample = -1;
+	UInt32 totalSamples = inBuffer->mAudioDataByteSize/4;
+	short lastSample = -1;
 	Float32 zeroCrossings = 0;
-	
-  // 5 Byte rolling average
-	for(int i = 0; i < totalBytes - (5 * span); i += span){
-		int sampleSum = 0;
-    for(int y = 0; y < 5 * span; y+=span){ 
-      short* p_sample = (short*)(inBuffer->mAudioData + i + y);
-		  sampleSum += *p_sample;
-	  }
-    short sample = sampleSum / 5;
 
+	short* buffer = (short*)inBuffer->mAudioData;
+	
+	for(int i = kMEANWINDOW; i < totalSamples; i++){
+		
+		// Rolling average
+		double sum = 0;
+		for(int j = 0; j < kMEANWINDOW; j++)
+		{
+			sum += buffer[i-j];
+		}
+		short sample = sum / kMEANWINDOW;
+		
 		// Test for the wave crossing the origin.
 		if((sample >= 0 && lastSample < 0) || (sample < 0 && lastSample >= 0))
 		{
@@ -150,17 +155,11 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	}
 	
 	// Ignore the quiet stuff.
-	if([self levels][0].mAveragePower > 0.02){
-		UInt32 sampleCount = totalBytes / format.mBytesPerPacket;
-
+	if([self levels][0].mAveragePower > 0.005){
+		Float32 last_frequency = frequency;
 		//Two crosses of zero per period of the wave.
-		frequency = zeroCrossings * format.mSampleRate / sampleCount / 2;
-	
-		
-		// TODO work out why we need to halve teh frequency. For some
-		// reason we get twice as many samples as we should. It's like it's
-		// in stereo.
-		frequency /= 2;
+		frequency = zeroCrossings * (double)format.mSampleRate / (double)totalSamples / 2.0;
+		frequency = (frequency + last_frequency) / 2;
 	}
 	else {
 		frequency = 0;
@@ -198,7 +197,7 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 - (void)setupBuffers {
 	AudioQueueBufferRef buffers[2];
 	for (NSInteger i = 0; i < 2; ++i) { 
-		AudioQueueAllocateBuffer(queue, 88200, &buffers[i]); 
+		AudioQueueAllocateBuffer(queue, kBUFFERSIZE, &buffers[i]); 
 		AudioQueueEnqueueBuffer(queue, buffers[i], 0, NULL); 
 	}
 }
