@@ -19,11 +19,7 @@
 
 @end
 
-static const int kBUFFERSIZE = 16384;	//How big a buffer to use.
-static const int kMEANWINDOW = 15;		//Hom many samples to average together when smoothing the input.
-
 static SCListener *sharedListener = nil;
-
 static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer, const AudioTimeStamp *inStartTime, UInt32 inNumberPacketsDescriptions, const AudioStreamPacketDescription *inPacketDescs) {
 	SCListener *listener = (SCListener *)inUserData;
 	if ([listener isListening]){
@@ -54,7 +50,6 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 - (void)listen {
 	if (queue == nil){
 		[self setupQueue];
-   	    AudioSessionInitialize(NULL,NULL,NULL,NULL);
     }
 	AudioQueueStart(queue, NULL);
 }
@@ -118,7 +113,7 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 
 - (Float32)frequency {
 	if (![self isListening])
-		return 0.0;
+		return 0;
 	
 	return frequency;
 }
@@ -127,43 +122,42 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	frequency = f;
 }
 
-// Calculate the frequency based on zero crossings.
-// A propper fourier transform should give a much better result than this.
-- (void)updateFreqFromBuffer: (AudioQueueBufferRef) inBuffer{
-	UInt32 totalSamples = inBuffer->mAudioDataByteSize/4;
-	short lastSample = -1;
-	Float32 zeroCrossings = 0;
 
+// Calculate the frequency of an audio buffer using fft.
+- (void)updateFreqFromBuffer: (AudioQueueBufferRef) inBuffer{
+
+	// Two bytes per sample.
+	UInt32 totalSamples = inBuffer->mAudioDataByteSize/2;
 	short* buffer = (short*)inBuffer->mAudioData;
+
+	memset(in_fft, 0, kBUFFERSIZE);
+	memset(out_fft, 0, kBUFFERSIZE);
 	
-	for(int i = kMEANWINDOW; i < totalSamples; i++){
-		
-		// Rolling average
-		double sum = 0;
-		for(int j = 0; j < kMEANWINDOW; j++)
-		{
-			sum += buffer[i-j];
-		}
-		short sample = sum / kMEANWINDOW;
-		
-		// Test for the wave crossing the origin.
-		if((sample >= 0 && lastSample < 0) || (sample < 0 && lastSample >= 0))
-		{
-			zeroCrossings++;
-		}
-		lastSample = sample;
+	// Populate FFT input.
+	for(int i = 0; i < totalSamples; i++){
+		in_fft[i].r = buffer[i];
+		in_fft[i].i = 0;
 	}
 	
-	// Ignore the quiet stuff.
-	if([self levels][0].mAveragePower > 0.005){
-		Float32 last_frequency = frequency;
-		//Two crosses of zero per period of the wave.
-		frequency = zeroCrossings * (double)format.mSampleRate / (double)totalSamples / 2.0;
-		frequency = (frequency + last_frequency) / 2;
+	// Run FFT
+	kiss_fft_cfg kiss_cfg = kiss_fft_alloc(totalSamples, 0, NULL, NULL);
+	kiss_fft(kiss_cfg, in_fft, out_fft);
+	free(kiss_cfg);
+	
+	// Find highest db value in the output.
+	int max = 0;
+	int max_index = 0;
+	for(int i = 0; i < totalSamples / 2; i++){
+		// db is the amplitude of this bucket out of the fft.
+		int db = out_fft[i].r * out_fft[i].r + out_fft[i].i * out_fft[i].i;
+		if(db > max){
+			max = db;
+			max_index = i;
+		}
 	}
-	else {
-		frequency = 0;
-	}
+	
+	// Calculate frequency.
+	self.frequency = max_index * format.mSampleRate / totalSamples;
 }
 
 #pragma mark -
@@ -176,7 +170,7 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	[self setupFormat];
 	AudioQueueNewInput(&format, listeningCallback, self, NULL, NULL, 0, &queue);
 	[self setupBuffers];
-	[self setupMetering];	
+	[self setupMetering];
 }
 
 - (void)setupFormat {
@@ -195,8 +189,8 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 }
 
 - (void)setupBuffers {
-	AudioQueueBufferRef buffers[2];
-	for (NSInteger i = 0; i < 2; ++i) { 
+	AudioQueueBufferRef buffers[3];
+	for (NSInteger i = 0; i < 3; ++i) { 
 		AudioQueueAllocateBuffer(queue, kBUFFERSIZE, &buffers[i]); 
 		AudioQueueEnqueueBuffer(queue, buffers[i], 0, NULL); 
 	}
@@ -227,9 +221,11 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 }
 
 - (id)init {
-	if ([super init] == nil)
+	if ([super init] == nil){
 		return nil;
-
+	}
+	
+	AudioSessionInitialize(NULL,NULL,NULL,NULL);
 	return self;
 }
 

@@ -6,6 +6,7 @@
 #include <math.h>
 #include <string.h>
 
+// User 16bit int's not floats // Jared
 #define FIXED_POINT 16
 
 #ifdef __cplusplus
