@@ -1,15 +1,14 @@
-SCListener 1.0.1-jkells
-=======================
+SCListener 1.0.1-jkells.2
+=========================
 
-* This is a fork to add frequency detection.
+* This is a fork to add frequency detection. FFT is done using the kiss_fft library.
 
-* DON'T USE THIS YET. Trying to calculate the frequency based on zero crossings is no good. 
-
-A simple class for listening to microphone levels, suitable for the iPhone.
+A simple class for listening to microphone levels and detecting frequency, suitable for the iPhone.
 
 * [Intro](http://stephencelis.com/2009/03/02/now-i-just-need-an-audience.html)
-* [GitHub](http://github.com/stephencelis/sc_listener)
-
+* [GitHub original](http://github.com/stephencelis/sc_listener)
+* [GitHub fork](http://github.com/jkells/sc_listener)
+* [KISS_FFT Library](http://kissfft.sourceforge.net/)
 
 Usage
 -----
@@ -24,7 +23,10 @@ Usage
     
     // Retrieve the peak power.
     [[SCListener sharedListener] peakPower];
-    
+
+    // Retrieve the dominant frequency
+    [[SCListener sharedListener] frequency];
+
     // Hmm...we're using this guy a lot...
     SCListener *listener = [SCListener sharedListener];
     
@@ -51,6 +53,7 @@ License
 -------
 
 (c) 2009-* Stephen Celis, <stephen@stephencelis.com>.
+(c) 2010-* Jared Kells, <jkells@gmail.com>.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy 
 of this software and associated documentation files (the "Software"), to deal 

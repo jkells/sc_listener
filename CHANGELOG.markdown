@@ -1,6 +1,14 @@
 SCListener
 ==========
 
+Version 1.0.1-jkells.2
+----------------------
+15 Feb 2010
+
+* Include kiss_fft library.
+* Detect dominant frequency using fft.
+
+
 Version 1.0.1-jkells
 --------------------
 
