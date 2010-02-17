@@ -14,7 +14,7 @@
 // 500ms = 44100 * (500/1000) = 22050 samples @ 2bytes each = 44100 
 // A higher sample size gives more accurate results at the expense of responsiveness.
 // 44,100 byte buffer will only report frequency every 500ms.
-#define kBUFFERSIZE 44100
+#define kBUFFERSIZE 32768
 
 @interface SCListener : NSObject {
 	AudioQueueLevelMeterState *levels;
@@ -22,7 +22,10 @@
 	AudioQueueRef queue;
 	AudioStreamBasicDescription format;
 	Float64 sampleRate;
-	UInt32 frequency;
+
+	// Audio Buffer
+	short audio_data[kBUFFERSIZE];
+	UInt32 audio_data_len;
 	
 	// Buffers for fft
 	kiss_fft_cpx in_fft[kBUFFERSIZE];

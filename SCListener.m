@@ -15,15 +15,16 @@
 - (void)setupFormat;
 - (void)setupBuffers;
 - (void)setupMetering;
-- (void)updateFreqFromBuffer: (AudioQueueBufferRef) inBuffer;
-
+- (UInt32)getFreqFromBuffer: (short*) buffer length: (UInt32) length;
+- (UInt32)findOptimalSampleLength: (UInt32) samples;
+- (void)setAudioBuffer: (short*) buffer length: (UInt32) length;
 @end
 
 static SCListener *sharedListener = nil;
 static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer, const AudioTimeStamp *inStartTime, UInt32 inNumberPacketsDescriptions, const AudioStreamPacketDescription *inPacketDescs) {
 	SCListener *listener = (SCListener *)inUserData;
 	if ([listener isListening]){
-		[listener updateFreqFromBuffer: inBuffer];
+		[listener setAudioBuffer:inBuffer->mAudioData length: inBuffer->mAudioDataByteSize];
 		AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, NULL);
 	}
 }
@@ -112,29 +113,48 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 #pragma mark Frequency 
 
 - (Float32)frequency {
-	if (![self isListening])
+	short buffer[kBUFFERSIZE];
+	UInt32 buffer_length;
+	@synchronized(self) {
+		memcpy(buffer, audio_data, kBUFFERSIZE);
+		buffer_length = audio_data_len;
+	}
+	if(buffer_length ==0 )
 		return 0;
+	else	
+		return [self getFreqFromBuffer: buffer length: buffer_length];
+}
+
+- (void)setAudioBuffer: (short*) buffer length: (UInt32) length{
+	@synchronized(self) {
+		memcpy(audio_data, buffer, length);
+		audio_data_len = length;
+		
+	}
+}
+
+// Find the largest sample size that is a power of 2
+- (UInt32) findOptimalSampleLength: (UInt32) samples{
+	int result = 1;
+	while(samples){
+		samples >>= 1;
+		result <<= 1;
+	}
 	
-	return frequency;
+	return (result >> 1);
 }
-
-- (void) setFrequency:(Float32) f{
-	frequency = f;
-}
-
 
 // Calculate the frequency of an audio buffer using fft.
-- (void)updateFreqFromBuffer: (AudioQueueBufferRef) inBuffer{
-
+- (UInt32)getFreqFromBuffer: (short*) buffer length: (UInt32) length{
 	// Two bytes per sample.
-	UInt32 totalSamples = inBuffer->mAudioDataByteSize/2;
-	short* buffer = (short*)inBuffer->mAudioData;
-
-	memset(in_fft, 0, kBUFFERSIZE);
-	memset(out_fft, 0, kBUFFERSIZE);
+	UInt32 totalSamples = length/2;
+	totalSamples = [self findOptimalSampleLength: totalSamples];
+	
+	memset(in_fft, 0, kBUFFERSIZE * sizeof(kiss_fft_cpx));
+	memset(out_fft, 0, kBUFFERSIZE * sizeof(kiss_fft_cpx));
 	
 	// Populate FFT input.
-	for(int i = 0; i < totalSamples; i++){
+	for(UInt32 i = 0; i < totalSamples; i++){
 		in_fft[i].r = buffer[i];
 		in_fft[i].i = 0;
 	}
@@ -143,21 +163,21 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	kiss_fft_cfg kiss_cfg = kiss_fft_alloc(totalSamples, 0, NULL, NULL);
 	kiss_fft(kiss_cfg, in_fft, out_fft);
 	free(kiss_cfg);
-	
+	 
 	// Find highest db value in the output.
-	int max = 0;
-	int max_index = 0;
-	for(int i = 0; i < totalSamples / 2; i++){
+	UInt32 max = 0;
+	UInt32 max_index = 0;
+	for(UInt32 i = 0; i < totalSamples / 2; i++){
 		// db is the amplitude of this bucket out of the fft.
-		int db = out_fft[i].r * out_fft[i].r + out_fft[i].i * out_fft[i].i;
+		UInt32 db = out_fft[i].r * out_fft[i].r + out_fft[i].i * out_fft[i].i;
 		if(db > max){
 			max = db;
 			max_index = i;
 		}
 	}
-	
+	 
 	// Calculate frequency.
-	self.frequency = max_index * format.mSampleRate / totalSamples;
+	return max_index * format.mSampleRate / totalSamples;
 }
 
 #pragma mark -
