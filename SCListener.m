@@ -144,14 +144,29 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	return (result >> 1);
 }
 
-// Calculate the frequency of an audio buffer using fft.
-- (UInt32)getFreqFromBuffer: (short*) buffer length: (UInt32) length{
-	// Two bytes per sample.
-	UInt32 totalSamples = length/2;
-	totalSamples = [self findOptimalSampleLength: totalSamples];
+
+- (double) hamming_window: (short) input totalSamples: (short) totalSamples{
+    double a = 2.0 * 3.141592654 / ( totalSamples - 1 );
+	double w;
 	
+    w = 0.5 - 0.5 * cos( a * input );
+    return w;
+}
+
+
+- (void) performWindow: (short*) buffer totalSamples: (UInt32) totalSamples{
+	for (int i = 0; i < totalSamples; i++){
+		buffer[i] *= [self hamming_window: i totalSamples: totalSamples];
+	}
+}
+
+
+- (void) performFFT: (short*) buffer totalSamples: (UInt32) totalSamples{
 	memset(in_fft, 0, kBUFFERSIZE * sizeof(kiss_fft_cpx));
 	memset(out_fft, 0, kBUFFERSIZE * sizeof(kiss_fft_cpx));
+	memset(freq_db, 0, kBUFFERSIZE / 2 );
+	
+	[self performWindow: buffer totalSamples: totalSamples];
 	
 	// Populate FFT input.
 	for(UInt32 i = 0; i < totalSamples; i++){
@@ -163,13 +178,41 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	kiss_fft_cfg kiss_cfg = kiss_fft_alloc(totalSamples, 0, NULL, NULL);
 	kiss_fft(kiss_cfg, in_fft, out_fft);
 	free(kiss_cfg);
-	 
+	
+	
+	// Calculate amplitude. ( half the fft is a duplicate )
+	for(int i = 0; i < totalSamples / 2; i++)
+	{	
+		freq_db[i] = out_fft[i].r * out_fft[i].r + out_fft[i].i * out_fft[i].i;
+	}
+}
+
+- (void) addHarmonics: (UInt32) totalSamples{
+	const int max_harmonics = 5;
+	int fft_range = totalSamples / 2;
+	
+	// Add harmonics together
+	for(int i = 0; i < fft_range / max_harmonics; i++){	
+		for(int j = 2; j <= max_harmonics; j++){
+			freq_db[i] += freq_db[i*j];
+		}
+	}
+}
+
+// Calculate the frequency of an audio buffer using fft.
+- (UInt32)getFreqFromBuffer: (short*) buffer length: (UInt32) length{
+	// Two bytes per sample.
+	UInt32 totalSamples = length/2;
+	totalSamples = [self findOptimalSampleLength: totalSamples];
+	
+	[self performFFT: buffer totalSamples: totalSamples];
+	[self addHarmonics: totalSamples];
+	
 	// Find highest db value in the output.
 	UInt32 max = 0;
 	UInt32 max_index = 0;
-	for(UInt32 i = 0; i < totalSamples / 2; i++){
-		// db is the amplitude of this bucket out of the fft.
-		UInt32 db = out_fft[i].r * out_fft[i].r + out_fft[i].i * out_fft[i].i;
+	for(UInt32 i = 0; i < totalSamples / 2 / 5; i++){
+		UInt32 db = freq_db[i];
 		if(db > max){
 			max = db;
 			max_index = i;
