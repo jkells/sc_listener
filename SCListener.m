@@ -115,16 +115,20 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 - (Float32)frequency {
 	short buffer[kBUFFERSIZE];
 	UInt32 buffer_length;
+	
+	// Make a local copy of the buffer so we don't block the audio thread.
 	@synchronized(self) {
 		memcpy(buffer, audio_data, kBUFFERSIZE);
 		buffer_length = audio_data_len;
 	}
+	
 	if(buffer_length ==0 )
 		return 0;
 	else	
 		return [self getFreqFromBuffer: buffer length: buffer_length];
 }
 
+// Return all the data for the frequency spectrum.
 - (double*) freq_db{
 	return freq_db;
 }
@@ -133,6 +137,7 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	return freq_db_harmonic;
 }
 
+// Set audio buffer. Called from audio thread.
 - (void)setAudioBuffer: (short*) buffer length: (UInt32) length{
 	@synchronized(self) {
 		memcpy(audio_data, buffer, length);
@@ -141,6 +146,7 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	}
 }
 
+// Some optional functions for performing a hamming window on the input.
 - (double) hamming_window: (short) input totalSamples: (short) totalSamples{
     double a = 2.0 * 3.141592654 / ( totalSamples - 1 );
 	double w;
@@ -148,7 +154,6 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
     w = 0.54 - 0.46 * cos( a * input );
     return w;
 }
-
 
 - (void) performWindow: (short*) buffer totalSamples: (UInt32) totalSamples{
 	for (int i = 0; i < totalSamples; i++){
@@ -178,13 +183,15 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	}
 }
 
-
+// To find harmonics we take the output and divide the frequencies by 2 and 3
+// we then add this to the original input. It should give us a peak at the
+// root note. This is needed for string instruments.
 - (void) addHarmonics{
 	const int max_harmonics = 3;
 	int fft_range = kFFTSIZE / 2;
 	
 	memcpy(freq_db_harmonic, freq_db, kFFTSIZE / 2 * sizeof(freq_db[0]));
-	// Add harmonics together
+
 	for(int j = 2; j <= max_harmonics; j++){
 		int low_bin = 0;
 		int new_value = 0;
@@ -202,84 +209,7 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	}
 }
 
-
-/*
-- (void) addHarmonics{
-	const int max_harmonics = 6;
-	int fft_range = kFFTSIZE / 2;
-	
-	// Add harmonics together
-	for(int i = 1; i < fft_range / max_harmonics - 1; i++){
-		freq_db_harmonic[i] = freq_db[i];
-		for(int j = 2; j <= max_harmonics; j++){
-			int bin_low = i;
-			int bin_high_top = round((i - 0.5) * j);
-			int bin_high_bottom = round((i + 0.5) * j);
-			for(int k = bin_high_top; k <= bin_high_bottom; k++){
-				freq_db_harmonic[bin_low] += freq_db[k];
-			}
-		}
-	}
-}
-*/
-
-- (void) filter_peaks{
-	int fft_range = kFFTSIZE / 2;
-	
-	//Clear non peaks
-	for(UInt32 i = 1; i < fft_range; i++){
-		if(freq_db[i] < freq_db[i-1] || freq_db[i] < freq_db[i+1]){
-			freq_db[i]=0;
-		}
-
-	}	
-}
-
-- (void) low_filter{
-	int fft_range = kFFTSIZE / 2;
-	
-	// Find highest db value in the output.
-	double max = 0;
-	for(UInt32 i = 0; i < fft_range; i++){
-		double db = freq_db[i];
-		if(db > max){
-			max = db;
-		}
-	}
-	
-	double min = max * 0.1;
-	//Filter anything less than a % of it
-	for(UInt32 i = 0; i < fft_range; i++){
-		if(freq_db[i] < min){
-			freq_db[i] = 0;
-		}
-	}
-}
-
-#define MAXHARMONICS 3
-- (UInt32) findTopSpikes{
-	double max_db[MAXHARMONICS] = {0,0,0};
-		
-	//find top 3
-	for(int i = 0; i < kFFTSIZE / 2; i++){
-		float db = freq_db[i];
-		for(int j = 0; j < MAXHARMONICS; j++)
-		{
-			if(db > max_db[j]){
-				max_db[j] = db;
-				break;
-			}
-		}	
-	}
-	
-	double low_filter = max_db[MAXHARMONICS - 1];
-	for(int i = 0; i < kFFTSIZE / 2; i++){
-		if(freq_db[i] < low_filter){
-			freq_db[i] = 0;
-		}
-	}
-}
-
+// Find the highest peak.
 - (UInt32) findTopSpike{
 	// Find highest db value in the output.
 	double max = 0;
@@ -300,18 +230,19 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	memset(out_fft, 0, kFFTSIZE * sizeof(kiss_fft_cpx));
 	memset(freq_db, 0, kFFTSIZE / 2 * sizeof(double));
 	memset(freq_db_harmonic, 0, kFFTSIZE / 2 * sizeof(double));
+	
 	// Two bytes per sample.
 	UInt32 totalSamples = length/2;
 	
+	//Optional :)
 	//[self performWindow: buffer totalSamples: totalSamples];	
+
 	[self performFFT: buffer totalSamples: totalSamples];
-	//[self low_filter];
-	//[self filter_peaks];
-	//[self findTopSpikes];
 	[self addHarmonics];
+	
 	int freq_index = [self findTopSpike];
-	//NSLog(@"Freq: %u, Samples: %u DB: %f", max_index, length/2, max);
-	// Calculate frequency.
+
+	// Calculate frequency from fft bin number.
 	return (Float32)freq_index * format.mSampleRate / kFFTSIZE;
 }
 
@@ -375,6 +306,9 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 	}
 	
 	AudioSessionInitialize(NULL,NULL,NULL,NULL);
+	Float64 rate=kSAMPLERATE;
+	UInt32 size = sizeof(rate);	
+	AudioSessionSetProperty (kAudioSessionProperty_PreferredHardwareSampleRate, size, &rate); 
 	return self;
 }
 
