@@ -305,26 +305,9 @@ static void listeningCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBu
 		return nil;
 	}
 	
-	AudioSessionInitialize(NULL,NULL,NULL,NULL);
-	Float64 rate=kSAMPLERATE;
-	UInt32 size = sizeof(rate);	
-	AudioSessionSetProperty (kAudioSessionProperty_PreferredHardwareSampleRate, size, &rate); 
-	return self;
-}
-
-- (id)retain {
-	return self;
-}
-
-- (unsigned)retainCount {
-	return UINT_MAX;
-}
-
-- (void)release {
-	// Do nothing.
-}
-
-- (id)autorelease {
+	[[AVAudioSession sharedInstance] setActive:YES error:nil];
+  	[[AVAudioSession sharedInstance]
+   		setCategory:AVAudioSessionCategoryPlayAndRecord error:nil];
 	return self;
 }
 
