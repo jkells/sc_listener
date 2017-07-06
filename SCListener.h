@@ -8,6 +8,7 @@
 
 #import <Foundation/Foundation.h>
 #import <AudioToolbox/AudioQueue.h>
+#import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioServices.h>
 #import "kiss_fftr.h"
 
